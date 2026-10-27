@@ -91,4 +91,3 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         return Response({"detail": "Password changed successfully."})
-    

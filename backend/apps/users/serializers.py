@@ -46,7 +46,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     uidb64 = serializers.CharField()
     token = serializers.CharField()
-    new_password = serializers.CharField(write_only=True, min_lenth=8)
+    new_password = serializers.CharField(write_only=True, min_length=8)
 
     def validate(self, attrs):
         try:
