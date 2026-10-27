@@ -27,7 +27,11 @@ class CategorySerializer(serializers.ModelSerializer):
 class LocationSerializer(serializers.ModelSerializer):
     author = serializers.ReadOnlyField(source='author.username')
     author_id = serializers.ReadOnlyField(source='author.id')
-    category_name = serializers.ReadOnlyField(source='category.name')
+    category_name = serializers.ReadOnlyField(source='category.name')    
+    rating = serializers.FloatField(source='avg_rating', read_only=True, default=0.0)
+    reviews_count = serializers.IntegerField(read_only=True, default=0)
+    views_last_7_days = serializers.IntegerField(source='views_7d', read_only=True, default=0)
+    popularity = serializers.FloatField(read_only=True, default=0.0)
 
     class Meta:
         model = Location
@@ -42,10 +46,25 @@ class LocationSerializer(serializers.ModelSerializer):
             'longitude',
             'author',
             'author_id',
+            'rating',
+            'reviews_count',
+            'views_last_7_days',
+            'popularity',
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('id', 'author', 'author_id', 'category_name', 'created_at', 'updated_at')
+        read_only_fields = (
+            'id',
+            'author',
+            'author_id',
+            'category_name',
+            'rating',
+            'reviews_count',
+            'views_last_7_days',
+            'popularity',
+            'created_at',
+            'updated_at',
+        )
 
     def validate_latitude(self, value):
         if value < Decimal('-90.0') or value > Decimal('90.0'):

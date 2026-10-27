@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 
 
     'apps.users',
+    'apps.locations',
 ]
 
 
@@ -147,3 +148,20 @@ DEFAULT_FROM_EMAIL = 'noreply@locations.local'
 
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
+
+
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',            
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'RETRY_ON_TIMEOUT': True,
+        },
+        'KEY_PREFIX': 'locations_map',
+    }
+}

@@ -3,6 +3,9 @@ from django.utils.text import slugify
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db.models import Avg, Count, ExpressionWrapper, FloatField, Q, Value
+from django.db.models.functions import Coalesce
+from datetime import timedelta
 
 
 class Category(models.Model):
@@ -51,6 +54,14 @@ class SoftDeleteManager(models.Manager):
         return SoftDeleteQuerySet(self.model, using=self._db).filter(is_deleted=True)
 
 
+class LocationManager(SoftDeleteManager):
+    def get_queryset(self):
+        return LocationQuerySet(self.model, using=self._db).filter(is_deleted=False)
+
+    def with_metrics(self):
+        return self.get_queryset().with_metrics()
+
+
 class Location(models.Model):
     name = models.CharField(max_length=255, verbose_name="Name")
     description = models.TextField(blank=True, default="", verbose_name="Description")
@@ -89,7 +100,7 @@ class Location(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    objects = SoftDeleteManager()
+    objects = LocationManager()
     all_objects = models.Manager()
 
     class Meta:
@@ -140,7 +151,7 @@ class Review(models.Model):
         db_table = 'reviews'
         verbose_name = 'Review'
         verbose_name_plural = 'Reviews'
-        ordering = ['-created_at']        
+        ordering = ['-created_at']
         constraints = [
             models.UniqueConstraint(
                 fields=['location', 'author'],
@@ -189,3 +200,68 @@ class ReviewVote(models.Model):
 
     def __str__(self):
         return f"{self.user} voted {self.vote_type} on review #{self.review_id}"
+
+
+class LocationQuerySet(SoftDeleteQuerySet):
+    def with_metrics(self):
+        """
+        Dynamically annotates location queryset with:
+        avg_rating: calculated from reviews
+        reviews_count: total reviews
+        views_7d: views within the last 7 days
+        popularity: combined score
+        """
+        seven_days_ago = timezone.now() - timedelta(days=7)
+
+        return self.annotate(
+            avg_rating=Coalesce(
+                Avg('reviews__rating'),
+                Value(0.0),
+                output_field=FloatField()
+            ),
+            reviews_count=Count('reviews', distinct=True),
+            views_7d=Count(
+                'views',
+                filter=Q(views__created_at__gte=seven_days_ago),
+                distinct=True
+            ),
+        ).annotate(
+            popularity=ExpressionWrapper(
+                (models.F('avg_rating') * 10.0) +
+                (models.F('reviews_count') * 2.0) +
+                (models.F('views_7d') * 0.5),
+                output_field=FloatField()
+            )
+        )
+
+
+class LocationView(models.Model):
+    location = models.ForeignKey(
+        'Location',
+        on_delete=models.CASCADE,
+        related_name='views',
+        verbose_name="Location"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='location_views',
+        verbose_name="User"
+    )
+    ip_address = models.GenericIPAddressField(
+        verbose_name="IP Address",
+        null=True,
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'location_views'
+        verbose_name = 'Location View'
+        verbose_name_plural = 'Location Views'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"View for {self.location_id} at {self.created_at}"

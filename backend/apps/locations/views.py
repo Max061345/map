@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.filters import OrderingFilter, SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -7,6 +8,10 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Category, Location, Review, ReviewVote
 from .permissions import IsAdminOrReadOnly, IsAuthorOrAdminOrReadOnly
 from .serializers import CategorySerializers, LocationSerializer, ReviewSerializer, ReviewVoteSerializer
+from .services import record_location_view
+from .ordering import LocationOrderingFilter
+from .pagination import StandardResultsSetPagination
+from .filters import LocationFilter
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -21,23 +26,39 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class LocationViewSet(viewsets.ModelViewSet):
     """
-    CRUD ViewSet for locations with soft-delete support.
+    CRUD ViewSet for locations with search, filtering, ordering, pagination, and view tracking.
     """
-    queryset = Location.objects.select_related('category', 'author').all()
     serializer_class = LocationSerializer
     permission_classes = [IsAuthorOrAdminOrReadOnly]
+    pagination_class = StandardResultsSetPagination
+    
+    filter_backends = [DjangoFilterBackend, SearchFilter, LocationOrderingFilter]    
+    
+    filterset_class = LocationFilter
+    
+    search_fields = ['name', 'description']
+    
+    ordering_fields = ['created_at', 'rating', 'avg_rating', 'popularity']
+    ordering = ['-created_at']
+
+    def get_queryset(self):        
+        return Location.objects.with_metrics().select_related('category', 'author')
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        record_location_view(request, instance)
+                
+        instance = self.get_queryset().get(pk=instance.pk)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
-        return Response(
-            {"detail": "Location has been successfully soft-deleted."},
-            status=status.HTTP_200_OK
-        )
-
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class ReviewViewSet(viewsets.ModelViewSet):
     """
