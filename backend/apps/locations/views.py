@@ -151,7 +151,11 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True,
+            methods=['post'],
+            permission_classes=[IsAuthenticated],
+            serializer_class=ReviewVoteSerializer,
+            )
     def vote(self, request, pk=None):
         """
         Allows an authenticated user to like or dislike a review once.
