@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
-from django.urls import reverse
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -11,7 +13,8 @@ class AuthenticationAPITests(APITestCase):
         self.register_url = '/api/auth/register/'
         self.login_url = '/api/auth/login/'
         self.logout_url = '/api/auth/logout/'
-        self.me_url = '/api/auth/me/'
+        self.reset_request_url = '/api/auth/password-reset/'
+        self.reset_confirm_url = '/api/auth/password-reset-confirm/'
 
         self.user_data = {
             'username': 'testuser',
@@ -25,11 +28,13 @@ class AuthenticationAPITests(APITestCase):
             password='Password123!'
         )
 
+    # Registration
     def test_user_registration_success(self):
         response = self.client.post(self.register_url, self.user_data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(username='testuser').exists())
 
+    # Login & Session Creation
     def test_user_login_session_creation(self):
         login_data = {
             'username': 'existinguser',
@@ -37,13 +42,37 @@ class AuthenticationAPITests(APITestCase):
         }
         response = self.client.post(self.login_url, login_data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Verify session cookie was set
         self.assertIn('_auth_user_id', self.client.session)
-    
 
+    # Logout
     def test_user_logout(self):
         self.client.force_login(self.user)
         response = self.client.post(self.logout_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Verify user session was cleared
         self.assertNotIn('_auth_user_id', self.client.session)
+
+    # Password Reset Request
+    def test_password_reset_request_success(self):
+        response = self.client.post(
+            self.reset_request_url,
+            {'email': 'existing@example.com'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # Password Reset Confirm (with uidb64 and token)
+    def test_password_reset_confirm_success(self):
+        uidb64 = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+
+        payload = {
+            'uidb64': uidb64,
+            'token': token,
+            'new_password': 'NewStrongPassword123!',
+            'new_password_confirm': 'NewStrongPassword123!'
+        }
+        response = self.client.post(self.reset_confirm_url, payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify password update in database
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewStrongPassword123!'))
